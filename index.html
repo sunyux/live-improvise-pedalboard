@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Improvise Film Score — 虚拟效果器台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#151210;
+    --panel:#211c17;
+    --pedal:#2b241d;
+    --pedal-top:#332b22;
+    --brass:#c98a3b;
+    --brass-dim:#8a6431;
+    --led-off:#463b2f;
+    --led-red:#d6473f;
+    --led-green:#6fae7c;
+    --text:#ede6da;
+    --text-dim:#a4988a;
+    --screen:#0a0806;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    padding:24px 16px 60px;
+  }
+  h1{
+    font-family:'Oswald',sans-serif;
+    font-weight:500;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    font-size:20px;
+    color:var(--brass);
+    margin:0 0 4px;
+  }
+  .subtitle{
+    color:var(--text-dim);
+    font-size:13px;
+    margin:0 0 24px;
+  }
+  .screen-wrap{
+    background:var(--panel);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:20px;
+    border:1px solid #3a3225;
+  }
+  .screen{
+    position:relative;
+    background:var(--screen);
+    border-radius:8px;
+    overflow:hidden;
+    aspect-ratio:16/9;
+    box-shadow:inset 0 0 40px rgba(0,0,0,0.7);
+  }
+  .screen video{
+    width:100%;height:100%;object-fit:contain;background:#000;
+  }
+  .screen .empty{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--text-dim);font-size:13px;text-align:center;padding:20px;
+  }
+  .screen-controls{
+    display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;
+  }
+  .file-btn, .action-btn{
+    background:var(--pedal-top);
+    border:1px solid var(--brass-dim);
+    color:var(--text);
+    font-family:'Oswald',sans-serif;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    font-size:12px;
+    padding:8px 14px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  .file-btn:hover, .action-btn:hover{border-color:var(--brass);}
+  .action-btn.primary{background:var(--brass-dim);}
+  .action-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  input[type=file]{display:none;}
+
+  .board{
+    background:linear-gradient(180deg,var(--panel),#1a1611);
+    border-radius:14px;
+    padding:20px 16px;
+    border:1px solid #3a3225;
+    display:flex;
+    gap:14px;
+    overflow-x:auto;
+    margin-bottom:20px;
+  }
+  .pedal{
+    background:var(--pedal);
+    border-radius:10px;
+    border:1px solid #443a2c;
+    min-width:150px;
+    flex:1;
+    padding:14px 12px 18px;
+    text-align:center;
+    box-shadow:0 4px 8px rgba(0,0,0,0.4);
+  }
+  .pedal h3{
+    font-family:'Oswald',sans-serif;
+    font-size:13px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    margin:0 0 14px;
+    color:var(--text);
+  }
+  .knob-row{display:flex;justify-content:center;gap:16px;margin-bottom:16px;}
+  .knob-unit{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .knob{
+    width:52px;height:52px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #4a4032, #211c16 70%);
+    border:1px solid #55492f;
+    position:relative;
+    cursor:ns-resize;
+    touch-action:none;
+  }
+  .knob .indicator{
+    position:absolute;top:4px;left:50%;width:2px;height:20px;
+    background:var(--brass);
+    transform-origin:50% 22px;
+    transform:translateX(-50%) rotate(0deg);
+    border-radius:2px;
+  }
+  .knob-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;}
+
+  .footswitch{
+    width:44px;height:44px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#3a322a,#181410 75%);
+    border:2px solid #55492f;
+    margin:0 auto 8px;
+    cursor:pointer;
+    position:relative;
+  }
+  .footswitch::after{
+    content:'';position:absolute;top:6px;left:50%;transform:translateX(-50%);
+    width:8px;height:8px;border-radius:50%;background:var(--led-off);
+    box-shadow:0 0 2px rgba(0,0,0,0.6);
+  }
+  .pedal.on .footswitch::after{background:var(--led-green);box-shadow:0 0 8px var(--led-green);}
+  .pedal-state{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;}
+  .pedal.on .pedal-state{color:var(--led-green);}
+
+  .transport{
+    background:var(--panel);
+    border:1px solid #3a3225;
+    border-radius:14px;
+    padding:18px 16px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:16px;
+    align-items:center;
+    margin-bottom:20px;
+  }
+  .rec-indicator{
+    width:10px;height:10px;border-radius:50%;background:var(--led-off);
+  }
+  .rec-indicator.active{background:var(--led-red);box-shadow:0 0 8px var(--led-red);animation:pulse 1s infinite;}
+  @keyframes pulse{50%{opacity:0.4;}}
+  .status{font-size:12px;color:var(--text-dim);}
+  a.download-link{color:var(--brass);font-size:12px;text-decoration:underline;}
+
+  .log{
+    background:var(--panel);
+    border:1px solid #3a3225;
+    border-radius:14px;
+    padding:18px 16px;
+  }
+  .log h2{
+    font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:0.06em;
+    text-transform:uppercase;color:var(--brass);margin:0 0 12px;
+  }
+  .log textarea{
+    width:100%;background:#1a1611;border:1px solid #443a2c;border-radius:6px;
+    color:var(--text);font-family:'Inter',sans-serif;font-size:13px;padding:8px;
+    min-height:50px;resize:vertical;
+  }
+  .log-entry{
+    border-top:1px solid #3a3225;padding:10px 0;font-size:12px;color:var(--text-dim);
+  }
+  .log-entry .meta{color:var(--brass);font-size:11px;margin-bottom:2px;}
+
+  .guide{
+    background:var(--panel);
+    border:1px solid #3a3225;
+    border-radius:14px;
+    padding:18px 16px;
+    margin-bottom:20px;
+  }
+  .guide h2{
+    font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:0.06em;
+    text-transform:uppercase;color:var(--brass);margin:0 0 12px;
+  }
+  .guide ol{margin:0;padding-left:20px;color:var(--text-dim);font-size:13px;line-height:1.9;}
+  .guide li b{color:var(--text);}
+
+  .demo-panel{
+    background:var(--panel);
+    border:1px solid #3a3225;
+    border-radius:14px;
+    padding:18px 16px;
+    margin-bottom:20px;
+  }
+  .demo-panel h2{
+    font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:0.06em;
+    text-transform:uppercase;color:var(--brass);margin:0 0 6px;
+  }
+  .demo-hint{font-size:12px;color:var(--text-dim);margin:0 0 14px;}
+  .demo-buttons{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;}
+  .demo-buttons button.action-btn.playing{background:var(--led-green);border-color:var(--led-green);color:#0a0806;}
+
+  .keyboard{
+    display:flex;gap:4px;flex-wrap:wrap;
+  }
+  .key{
+    width:38px;height:46px;
+    background:var(--pedal-top);
+    border:1px solid #4a3f31;
+    border-radius:5px;
+    display:flex;align-items:flex-end;justify-content:center;
+    font-size:11px;color:var(--text-dim);
+    padding-bottom:4px;
+    user-select:none;
+    touch-action:none;
+  }
+  .key.active{background:var(--brass);color:#1a1611;border-color:var(--brass);}
+
+  .scope-panel{
+    background:var(--panel);
+    border:1px solid #3a3225;
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:20px;
+  }
+  .scope-panel h2{
+    font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:0.06em;
+    text-transform:uppercase;color:var(--brass);margin:0 0 12px;
+  }
+  .scope-wrap{
+    background:#0a0806;
+    border-radius:8px;
+    border:1px solid #3a3225;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(201,138,59,0.06) 0 1px, transparent 1px 24px),
+      repeating-linear-gradient(90deg, rgba(201,138,59,0.06) 0 1px, transparent 1px 24px);
+  }
+  #scope{width:100%;height:140px;display:block;}
+</style>
+</head>
+<body>
+
+<h1>Live Improvise Film Score</h1>
+<p class="subtitle">虚拟效果器台 · 默片同步 · 演出录制 · 练习日志</p>
+
+<div class="guide">
+  <h2>新手上路 · 四步</h2>
+  <ol>
+    <li><b>启动音频引擎</b> — 页面下方点一次即可,浏览器要求手动点击才能出声。</li>
+    <li><b>先别接乐器</b> — 用下面的"内置声音"按钮或电脑键盘就能弹出声音过效果器,熟悉手感。</li>
+    <li><b>打开脚踏开关试听</b> — 点效果器上的圆形踏板,边弹边切换,听效果的区别。</li>
+    <li><b>觉得好玩就录下来</b> — 点"开始录制",弹完点"停止录制"就能下载这段即兴。</li>
+  </ol>
+</div>
+
+<div class="screen-wrap">
+  <div class="screen">
+    <video id="video" playsinline muted loop></video>
+    <div class="empty" id="emptyHint">上传一段默片/实验短片素材以同步演奏</div>
+  </div>
+  <div class="screen-controls">
+    <label class="file-btn">加载影片<input type="file" id="videoFile" accept="video/*"></label>
+    <button class="action-btn" id="playBtn" disabled>播放 / 暂停</button>
+    <span class="status" id="videoStatus">未加载素材</span>
+  </div>
+</div>
+
+<div class="board" id="board">
+  <div class="pedal" data-pedal="drive">
+    <h3>Overdrive</h3>
+    <div class="knob-row">
+      <div class="knob-unit">
+        <div class="knob" data-param="drive" data-value="0.3"><div class="indicator"></div></div>
+        <div class="knob-label">Drive</div>
+      </div>
+    </div>
+    <div class="footswitch"></div>
+    <div class="pedal-state">Bypass</div>
+  </div>
+
+  <div class="pedal" data-pedal="delay">
+    <h3>Delay</h3>
+    <div class="knob-row">
+      <div class="knob-unit">
+        <div class="knob" data-param="time" data-value="0.35"><div class="indicator"></div></div>
+        <div class="knob-label">Time</div>
+      </div>
+      <div class="knob-unit">
+        <div class="knob" data-param="feedback" data-value="0.35"><div class="indicator"></div></div>
+        <div class="knob-label">Feedback</div>
+      </div>
+    </div>
+    <div class="footswitch"></div>
+    <div class="pedal-state">Bypass</div>
+  </div>
+
+  <div class="pedal" data-pedal="reverb">
+    <h3>Reverb</h3>
+    <div class="knob-row">
+      <div class="knob-unit">
+        <div class="knob" data-param="decay" data-value="0.5"><div class="indicator"></div></div>
+        <div class="knob-label">Decay</div>
+      </div>
+      <div class="knob-unit">
+        <div class="knob" data-param="mix" data-value="0.4"><div class="indicator"></div></div>
+        <div class="knob-label">Mix</div>
+      </div>
+    </div>
+    <div class="footswitch"></div>
+    <div class="pedal-state">Bypass</div>
+  </div>
+</div>
+
+<div class="demo-panel">
+  <h2>内置示范声音</h2>
+  <p class="demo-hint">还没接乐器?先点一下"启动音频引擎",再用下面这些按钮或键盘弹出声音,一样会过效果器链条。</p>
+  <div class="demo-buttons">
+    <button class="action-btn" id="ufoBtn" disabled>飞碟音效 UFO</button>
+    <button class="action-btn" id="noiseBtn" disabled>噪音脉冲 Noise</button>
+    <button class="action-btn" id="alertBtn" disabled>提示音 Notice</button>
+    <button class="action-btn" id="droneBtn" disabled>持续音垫 Drone</button>
+    <button class="action-btn" id="guitarDemoBtn" disabled>吉他扫弦 Guitar Strum</button>
+  </div>
+  <p class="demo-hint">电脑键盘演奏(像弹钢琴一样,按住不放会持续发声):</p>
+  <div class="keyboard" id="keyboard"></div>
+  <div style="margin-top:12px;">
+    <button class="action-btn" id="timbreBtn">键盘音色: 合成 Synth</button>
+  </div>
+</div>
+
+<div class="scope-panel">
+  <h2>实时波形 Live Waveform</h2>
+  <div class="scope-wrap"><canvas id="scope"></canvas></div>
+</div>
+
+<div class="transport">
+  <button class="action-btn primary" id="engineBtn">启动音频引擎</button>
+  <button class="action-btn" id="micBtn" disabled>接入乐器输入</button>
+  <button class="action-btn" id="recBtn" disabled>开始录制</button>
+  <span class="rec-indicator" id="recDot"></span>
+  <span class="status" id="engineStatus">音频引擎未启动</span>
+  <span id="downloadWrap"></span>
+</div>
+
+<div class="log">
+  <h2>练习日志</h2>
+  <textarea id="noteInput" placeholder="记录这次即兴的感受、用到的效果器参数、灵感..."></textarea>
+  <div style="margin-top:8px;">
+    <button class="action-btn" id="saveLogBtn">保存本次记录</button>
+  </div>
+  <div id="logList"></div>
+</div>
+
+<script>
+// ---------- State ----------
+let audioCtx=null, micStream=null, sourceNode=null;
+let recDest=null, mediaRecorder=null, recChunks=[];
+
+const pedalState={
+  drive:{on:false, drive:0.3},
+  delay:{on:false, time:0.35, feedback:0.35},
+  reverb:{on:false, decay:0.5, mix:0.4}
+};
+
+let nodes={}; // audio nodes once engine started
+
+// ---------- Video ----------
+const video=document.getElementById('video');
+const emptyHint=document.getElementById('emptyHint');
+const playBtn=document.getElementById('playBtn');
+const videoStatus=document.getElementById('videoStatus');
+
+document.getElementById('videoFile').addEventListener('change', e=>{
+  const f=e.target.files[0];
+  if(!f) return;
+  video.src=URL.createObjectURL(f);
+  emptyHint.style.display='none';
+  playBtn.disabled=false;
+  videoStatus.textContent='已加载: '+f.name;
+});
+playBtn.addEventListener('click', ()=>{
+  if(video.paused){ video.play(); } else { video.pause(); }
+});
+
+// ---------- Knob interaction ----------
+document.querySelectorAll('.knob').forEach(knob=>{
+  let dragging=false, startY=0, startVal=0;
+  const setVisual=(val)=>{
+    const deg=-135+val*270;
+    knob.querySelector('.indicator').style.transform=`translateX(-50%) rotate(${deg}deg)`;
+  };
+  setVisual(parseFloat(knob.dataset.value));
+
+  knob.addEventListener('pointerdown', e=>{
+    dragging=true; startY=e.clientY; startVal=parseFloat(knob.dataset.value);
+    knob.setPointerCapture(e.pointerId);
+  });
+  knob.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    let val=startVal + (startY-e.clientY)/120;
+    val=Math.max(0,Math.min(1,val));
+    knob.dataset.value=val;
+    setVisual(val);
+    updateParam(knob.closest('.pedal').dataset.pedal, knob.dataset.param, val);
+  });
+  ['pointerup','pointercancel'].forEach(ev=>knob.addEventListener(ev, ()=>dragging=false));
+});
+
+function updateParam(pedal, param, val){
+  pedalState[pedal][param]=val;
+  if(!audioCtx) return;
+  applyParams();
+}
+
+// ---------- Footswitches ----------
+document.querySelectorAll('.pedal').forEach(p=>{
+  const sw=p.querySelector('.footswitch');
+  const stateEl=p.querySelector('.pedal-state');
+  sw.addEventListener('click', ()=>{
+    const key=p.dataset.pedal;
+    pedalState[key].on=!pedalState[key].on;
+    p.classList.toggle('on', pedalState[key].on);
+    stateEl.textContent=pedalState[key].on?'Engaged':'Bypass';
+    if(audioCtx) applyBypass();
+  });
+});
+
+// ---------- Audio engine ----------
+const engineBtn=document.getElementById('engineBtn');
+const engineStatus=document.getElementById('engineStatus');
+const micBtn=document.getElementById('micBtn');
+const recBtn=document.getElementById('recBtn');
+const recDot=document.getElementById('recDot');
+
+engineBtn.addEventListener('click', async ()=>{
+  if(audioCtx){ return; }
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  buildGraph();
+  engineStatus.textContent='音频引擎已启动 (静音待接入)';
+  engineBtn.disabled=true;
+  micBtn.disabled=false;
+  recBtn.disabled=false;
+  [ufoBtn, noiseBtn, alertBtn, droneBtn, guitarDemoBtn].forEach(b=>b.disabled=false);
+});
+
+function makeDistortionCurve(amount){
+  const k=amount*100, n=44100, curve=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const x=i*2/n-1;
+    curve[i]=(3+k)*x*20*(Math.PI/180)/(Math.PI+k*Math.abs(x));
+  }
+  return curve;
+}
+
+function makeImpulse(ctx, decaySeconds){
+  const rate=ctx.sampleRate;
+  const len=Math.max(1, Math.floor(rate*decaySeconds*3));
+  const impulse=ctx.createBuffer(2, len, rate);
+  for(let c=0;c<2;c++){
+    const data=impulse.getChannelData(c);
+    for(let i=0;i<len;i++){
+      data[i]=(Math.random()*2-1)*Math.pow(1-i/len, 3);
+    }
+  }
+  return impulse;
+}
+
+function buildGraph(){
+  const inputGain=audioCtx.createGain(); // where mic connects
+  const masterGain=audioCtx.createGain();
+  masterGain.gain.value=0.9;
+
+  // Drive stage
+  const driveShaper=audioCtx.createWaveShaper();
+  driveShaper.curve=makeDistortionCurve(pedalState.drive.drive);
+  driveShaper.oversample='4x';
+  const driveDry=audioCtx.createGain(), driveWet=audioCtx.createGain();
+  driveDry.gain.value=1; driveWet.gain.value=0;
+
+  // Delay stage
+  const delayNode=audioCtx.createDelay(2.0);
+  delayNode.delayTime.value=pedalState.delay.time*1.0;
+  const feedbackGain=audioCtx.createGain();
+  feedbackGain.gain.value=pedalState.delay.feedback*0.85;
+  const delayDry=audioCtx.createGain(), delayWet=audioCtx.createGain();
+  delayDry.gain.value=1; delayWet.gain.value=0;
+
+  // Reverb stage
+  const convolver=audioCtx.createConvolver();
+  convolver.buffer=makeImpulse(audioCtx, pedalState.reverb.decay*2+0.2);
+  const reverbDry=audioCtx.createGain(), reverbWet=audioCtx.createGain();
+  reverbDry.gain.value=1; reverbWet.gain.value=0;
+
+  recDest=audioCtx.createMediaStreamDestination();
+
+  // Wiring: input -> drive(dry/wet) -> delay(dry/wet) -> reverb(dry/wet) -> master -> destination + recDest
+  inputGain.connect(driveDry); inputGain.connect(driveShaper);
+  driveShaper.connect(driveWet);
+  const afterDrive=audioCtx.createGain();
+  driveDry.connect(afterDrive); driveWet.connect(afterDrive);
+
+  afterDrive.connect(delayDry);
+  afterDrive.connect(delayNode);
+  delayNode.connect(feedbackGain);
+  feedbackGain.connect(delayNode);
+  delayNode.connect(delayWet);
+  const afterDelay=audioCtx.createGain();
+  delayDry.connect(afterDelay); delayWet.connect(afterDelay);
+
+  afterDelay.connect(reverbDry);
+  afterDelay.connect(convolver);
+  convolver.connect(reverbWet);
+  const afterReverb=audioCtx.createGain();
+  reverbDry.connect(afterReverb); reverbWet.connect(afterReverb);
+
+  afterReverb.connect(masterGain);
+  masterGain.connect(audioCtx.destination);
+  masterGain.connect(recDest);
+
+  const analyser=audioCtx.createAnalyser();
+  analyser.fftSize=2048;
+  masterGain.connect(analyser);
+
+  nodes={inputGain, driveShaper, driveDry, driveWet, delayNode, feedbackGain, delayDry, delayWet,
+         convolver, reverbDry, reverbWet, masterGain, analyser};
+
+  applyBypass();
+  resizeScope();
+  startWaveformLoop();
+}
+
+// ---------- Waveform scope ----------
+const scopeCanvas=document.getElementById('scope');
+const scopeCtx=scopeCanvas.getContext('2d');
+function resizeScope(){
+  const rect=scopeCanvas.getBoundingClientRect();
+  scopeCanvas.width=rect.width*window.devicePixelRatio;
+  scopeCanvas.height=rect.height*window.devicePixelRatio;
+}
+window.addEventListener('resize', ()=>{ if(audioCtx) resizeScope(); });
+
+let waveformRunning=false;
+function startWaveformLoop(){
+  if(waveformRunning) return;
+  waveformRunning=true;
+  const bufferLength=nodes.analyser.fftSize;
+  const dataArray=new Uint8Array(bufferLength);
+  function draw(){
+    requestAnimationFrame(draw);
+    nodes.analyser.getByteTimeDomainData(dataArray);
+    const w=scopeCanvas.width, h=scopeCanvas.height;
+    scopeCtx.clearRect(0,0,w,h);
+    scopeCtx.lineWidth=2*window.devicePixelRatio;
+    scopeCtx.strokeStyle='#c98a3b';
+    scopeCtx.beginPath();
+    const slice=w/bufferLength;
+    let x=0;
+    for(let i=0;i<bufferLength;i++){
+      const v=dataArray[i]/128.0;
+      const y=v*h/2;
+      if(i===0) scopeCtx.moveTo(x,y); else scopeCtx.lineTo(x,y);
+      x+=slice;
+    }
+    scopeCtx.stroke();
+  }
+  draw();
+}
+
+function applyBypass(){
+  const t=audioCtx.currentTime, ramp=0.03;
+  nodes.driveDry.gain.linearRampToValueAtTime(pedalState.drive.on?0:1, t+ramp);
+  nodes.driveWet.gain.linearRampToValueAtTime(pedalState.drive.on?1:0, t+ramp);
+  nodes.delayDry.gain.linearRampToValueAtTime(pedalState.delay.on?0.6:1, t+ramp);
+  nodes.delayWet.gain.linearRampToValueAtTime(pedalState.delay.on?0.6:0, t+ramp);
+  nodes.reverbDry.gain.linearRampToValueAtTime(pedalState.reverb.on?(1-pedalState.reverb.mix):1, t+ramp);
+  nodes.reverbWet.gain.linearRampToValueAtTime(pedalState.reverb.on?pedalState.reverb.mix:0, t+ramp);
+}
+
+function applyParams(){
+  if(!nodes.driveShaper) return;
+  nodes.driveShaper.curve=makeDistortionCurve(pedalState.drive.drive);
+  nodes.delayNode.delayTime.setTargetAtTime(pedalState.delay.time*1.0, audioCtx.currentTime, 0.02);
+  nodes.feedbackGain.gain.setTargetAtTime(pedalState.delay.feedback*0.85, audioCtx.currentTime, 0.02);
+  nodes.convolver.buffer=makeImpulse(audioCtx, pedalState.reverb.decay*2+0.2);
+  applyBypass();
+}
+
+// ---------- Mic input ----------
+micBtn.addEventListener('click', async ()=>{
+  if(micStream){ return; }
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
+    sourceNode=audioCtx.createMediaStreamSource(micStream);
+    sourceNode.connect(nodes.inputGain);
+    engineStatus.textContent='乐器/麦克风输入已接入 — 建议戴耳机监听避免反馈';
+    micBtn.textContent='已接入输入';
+    micBtn.disabled=true;
+  }catch(err){
+    engineStatus.textContent='无法访问音频输入: '+err.message;
+  }
+});
+
+// ---------- Recording ----------
+recBtn.addEventListener('click', ()=>{
+  if(!recDest) return;
+  if(!mediaRecorder || mediaRecorder.state==='inactive'){
+    recChunks=[];
+    mediaRecorder=new MediaRecorder(recDest.stream);
+    mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) recChunks.push(e.data); };
+    mediaRecorder.onstop=()=>{
+      const blob=new Blob(recChunks, {type:'audio/webm'});
+      const url=URL.createObjectURL(blob);
+      document.getElementById('downloadWrap').innerHTML=
+        `<a class="download-link" href="${url}" download="improvise-${Date.now()}.webm">下载本次录音</a>`;
+    };
+    mediaRecorder.start();
+    recBtn.textContent='停止录制';
+    recDot.classList.add('active');
+  } else {
+    mediaRecorder.stop();
+    recBtn.textContent='开始录制';
+    recDot.classList.remove('active');
+  }
+});
+
+// ---------- Built-in demo sounds ----------
+const ufoBtn=document.getElementById('ufoBtn');
+const noiseBtn=document.getElementById('noiseBtn');
+const alertBtn=document.getElementById('alertBtn');
+const droneBtn=document.getElementById('droneBtn');
+const guitarDemoBtn=document.getElementById('guitarDemoBtn');
+let droneOsc=null; // holds active drone nodes when playing
+
+// Karplus-Strong plucked string synthesis — gives a natural guitar-like pluck
+function playGuitarPluck(freq, gain){
+  const now=audioCtx.currentTime;
+  const sampleRate=audioCtx.sampleRate;
+  const period=1/freq;
+
+  const bufferSize=Math.max(2, Math.ceil(sampleRate*period));
+  const buffer=audioCtx.createBuffer(1, bufferSize, sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
+  const noise=audioCtx.createBufferSource(); noise.buffer=buffer;
+
+  const delay=audioCtx.createDelay(1); delay.delayTime.value=period;
+  const damping=audioCtx.createBiquadFilter(); damping.type='lowpass'; damping.frequency.value=4500;
+  const feedback=audioCtx.createGain(); feedback.gain.value=0.98;
+  const outGain=audioCtx.createGain(); outGain.gain.value=gain!==undefined?gain:0.5;
+
+  noise.connect(delay);
+  delay.connect(damping);
+  damping.connect(feedback);
+  feedback.connect(delay);
+  damping.connect(outGain);
+  outGain.connect(nodes.inputGain);
+
+  noise.start(now);
+  noise.stop(now+period);
+
+  setTimeout(()=>{
+    try{ delay.disconnect(); damping.disconnect(); feedback.disconnect(); outGain.disconnect(); }
+    catch(e){}
+  }, 3500);
+}
+
+function playGuitarDemo(){
+  // Standard tuning open strings, low to high: E2 A2 D3 G3 B3 E4
+  const strings=[82.41, 110.00, 146.83, 196.00, 246.94, 329.63];
+  strings.forEach((f,i)=>{ setTimeout(()=>playGuitarPluck(f, 0.45), i*90); });
+  flashButton(guitarDemoBtn, strings.length*90+600);
+}
+guitarDemoBtn.addEventListener('click', ()=>{ if(audioCtx) playGuitarDemo(); });
+
+function playUFO(){
+  const now=audioCtx.currentTime, dur=3.2;
+  const osc=audioCtx.createOscillator(); osc.type='sine';
+  const vibrato=audioCtx.createOscillator(); vibrato.type='sine'; vibrato.frequency.value=6;
+  const vibratoGain=audioCtx.createGain(); vibratoGain.gain.value=40;
+  const env=audioCtx.createGain(); env.gain.value=0;
+
+  vibrato.connect(vibratoGain); vibratoGain.connect(osc.frequency);
+  osc.frequency.setValueAtTime(220, now);
+  osc.frequency.linearRampToValueAtTime(880, now+dur*0.5);
+  osc.frequency.linearRampToValueAtTime(160, now+dur);
+
+  osc.connect(env); env.connect(nodes.inputGain);
+  env.gain.linearRampToValueAtTime(0.35, now+0.1);
+  env.gain.linearRampToValueAtTime(0, now+dur);
+
+  osc.start(now); vibrato.start(now);
+  osc.stop(now+dur); vibrato.stop(now+dur);
+  flashButton(ufoBtn, dur*1000);
+}
+
+function playNoiseBurst(){
+  const now=audioCtx.currentTime, dur=0.8;
+  const bufferSize=audioCtx.sampleRate*dur;
+  const buffer=audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
+  const noise=audioCtx.createBufferSource(); noise.buffer=buffer;
+  const filter=audioCtx.createBiquadFilter(); filter.type='bandpass';
+  filter.frequency.value=1200; filter.Q.value=0.7;
+  const env=audioCtx.createGain(); env.gain.value=0;
+
+  noise.connect(filter); filter.connect(env); env.connect(nodes.inputGain);
+  env.gain.linearRampToValueAtTime(0.4, now+0.02);
+  env.gain.exponentialRampToValueAtTime(0.001, now+dur);
+
+  noise.start(now); noise.stop(now+dur);
+  flashButton(noiseBtn, dur*1000);
+}
+
+function playAlert(){
+  const now=audioCtx.currentTime;
+  const notes=[880, 660];
+  notes.forEach((freq, i)=>{
+    const t=now+i*0.18;
+    const osc=audioCtx.createOscillator(); osc.type='square';
+    osc.frequency.value=freq;
+    const env=audioCtx.createGain(); env.gain.value=0;
+    osc.connect(env); env.connect(nodes.inputGain);
+    env.gain.linearRampToValueAtTime(0.2, t+0.02);
+    env.gain.linearRampToValueAtTime(0, t+0.15);
+    osc.start(t); osc.stop(t+0.16);
+  });
+  flashButton(alertBtn, 400);
+}
+
+function toggleDrone(){
+  if(droneOsc){
+    const now=audioCtx.currentTime;
+    droneOsc.env.gain.linearRampToValueAtTime(0, now+0.6);
+    droneOsc.osc1.stop(now+0.7); droneOsc.osc2.stop(now+0.7);
+    droneOsc=null;
+    droneBtn.classList.remove('playing');
+    droneBtn.textContent='持续音垫 Drone';
+    return;
+  }
+  const now=audioCtx.currentTime;
+  const osc1=audioCtx.createOscillator(); osc1.type='sawtooth'; osc1.frequency.value=110;
+  const osc2=audioCtx.createOscillator(); osc2.type='sawtooth'; osc2.frequency.value=110*1.005;
+  const filter=audioCtx.createBiquadFilter(); filter.type='lowpass'; filter.frequency.value=800;
+  const env=audioCtx.createGain(); env.gain.value=0;
+
+  osc1.connect(filter); osc2.connect(filter); filter.connect(env); env.connect(nodes.inputGain);
+  env.gain.linearRampToValueAtTime(0.15, now+1.2);
+
+  osc1.start(now); osc2.start(now);
+  droneOsc={osc1, osc2, env};
+  droneBtn.classList.add('playing');
+  droneBtn.textContent='停止音垫';
+}
+
+function flashButton(btn, ms){
+  btn.classList.add('playing');
+  setTimeout(()=>btn.classList.remove('playing'), ms);
+}
+
+ufoBtn.addEventListener('click', ()=>{ if(audioCtx) playUFO(); });
+noiseBtn.addEventListener('click', ()=>{ if(audioCtx) playNoiseBurst(); });
+alertBtn.addEventListener('click', ()=>{ if(audioCtx) playAlert(); });
+droneBtn.addEventListener('click', ()=>{ if(audioCtx) toggleDrone(); });
+
+// ---------- Keyboard synth (plays through the same effect chain) ----------
+const KEY_MAP={
+  'a':261.63,'w':277.18,'s':293.66,'e':311.13,'d':329.63,
+  'f':349.23,'t':369.99,'g':392.00,'y':415.30,'h':440.00,
+  'u':466.16,'j':493.88,'k':523.25,'o':554.37,'l':587.33
+};
+const activeNotes={};
+const keyboardEl=document.getElementById('keyboard');
+let keyboardTimbre='synth';
+const timbreBtn=document.getElementById('timbreBtn');
+timbreBtn.addEventListener('click', ()=>{
+  keyboardTimbre = keyboardTimbre==='synth' ? 'guitar' : 'synth';
+  timbreBtn.textContent = '键盘音色: '+(keyboardTimbre==='synth' ? '合成 Synth' : '吉他 Guitar');
+});
+Object.keys(KEY_MAP).forEach(k=>{
+  const div=document.createElement('div');
+  div.className='key'; div.textContent=k.toUpperCase(); div.dataset.key=k;
+  keyboardEl.appendChild(div);
+});
+
+function noteOn(key){
+  if(!audioCtx) return;
+  const freq=KEY_MAP[key];
+  const keyEl=keyboardEl.querySelector(`[data-key="${key}"]`);
+
+  if(keyboardTimbre==='guitar'){
+    playGuitarPluck(freq, 0.5);
+    if(keyEl){ keyEl.classList.add('active'); setTimeout(()=>keyEl.classList.remove('active'), 400); }
+    return;
+  }
+
+  if(activeNotes[key]) return;
+  const osc=audioCtx.createOscillator(); osc.type='triangle'; osc.frequency.value=freq;
+  const env=audioCtx.createGain(); env.gain.value=0;
+  osc.connect(env); env.connect(nodes.inputGain);
+  const now=audioCtx.currentTime;
+  env.gain.linearRampToValueAtTime(0.3, now+0.03);
+  osc.start(now);
+  activeNotes[key]={osc, env};
+  if(keyEl) keyEl.classList.add('active');
+}
+function noteOff(key){
+  if(keyboardTimbre==='guitar') return;
+  const n=activeNotes[key];
+  if(!n) return;
+  const now=audioCtx.currentTime;
+  n.env.gain.linearRampToValueAtTime(0, now+0.08);
+  n.osc.stop(now+0.1);
+  delete activeNotes[key];
+  const keyEl=keyboardEl.querySelector(`[data-key="${key}"]`);
+  if(keyEl) keyEl.classList.remove('active');
+}
+window.addEventListener('keydown', e=>{
+  const k=e.key.toLowerCase();
+  if(KEY_MAP[k] && !e.repeat) noteOn(k);
+});
+window.addEventListener('keyup', e=>{
+  const k=e.key.toLowerCase();
+  if(KEY_MAP[k]) noteOff(k);
+});
+
+// ---------- Practice log (persisted via window.storage) ----------
+const logList=document.getElementById('logList');
+const noteInput=document.getElementById('noteInput');
+
+async function loadLog(){
+  try{
+    const res=await window.storage.get('practice-log', false);
+    const entries=res? JSON.parse(res.value): [];
+    renderLog(entries);
+  }catch(err){
+    renderLog([]);
+  }
+}
+
+function renderLog(entries){
+  logList.innerHTML='';
+  entries.slice().reverse().forEach(entry=>{
+    const div=document.createElement('div');
+    div.className='log-entry';
+    div.innerHTML=`<div class="meta">${entry.date}</div>${entry.note}`;
+    logList.appendChild(div);
+  });
+}
+
+document.getElementById('saveLogBtn').addEventListener('click', async ()=>{
+  const note=noteInput.value.trim();
+  if(!note) return;
+  let entries=[];
+  try{
+    const res=await window.storage.get('practice-log', false);
+    entries=res? JSON.parse(res.value): [];
+  }catch(err){ entries=[]; }
+  entries.push({date:new Date().toLocaleString('zh-CN'), note});
+  try{
+    await window.storage.set('practice-log', JSON.stringify(entries), false);
+  }catch(err){ console.error('保存失败', err); }
+  noteInput.value='';
+  renderLog(entries);
+});
+
+loadLog();
+</script>
+</body>
+</html>
