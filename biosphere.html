@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Biosphere — 声音宇宙</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --panel:#211c17;
+    --pedal:#2b241d;
+    --pedal-top:#332b22;
+    --brass:#c98a3b;
+    --brass-dim:#8a6431;
+    --led-off:#463b2f;
+    --led-red:#d6473f;
+    --led-green:#6fae7c;
+    --text:#ede6da;
+    --text-dim:#a4988a;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0a0806;}
+  #scene{position:fixed;inset:0;display:block;touch-action:none;}
+  .hud{
+    position:fixed;top:16px;left:16px;max-width:300px;
+    background:rgba(33,28,23,0.85);
+    border:1px solid #3a3225;border-radius:12px;
+    padding:14px 16px;color:var(--text);
+    font-family:'Inter',sans-serif;font-size:12px;line-height:1.75;
+    backdrop-filter:blur(4px);
+    pointer-events:none;
+  }
+  .hud a{pointer-events:auto;}
+  .hud h1{
+    font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:0.06em;
+    text-transform:uppercase;color:var(--brass);margin:0 0 8px;
+  }
+  .hud .keys{color:var(--text-dim);}
+  .hud .keys b{color:var(--text);}
+  .hud a{color:var(--brass);text-decoration:underline;display:inline-block;margin-top:8px;}
+  .hint{
+    position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    color:var(--text-dim);font-family:'Inter',sans-serif;font-size:11px;
+    background:rgba(33,28,23,0.7);border:1px solid #3a3225;border-radius:8px;
+    padding:6px 12px;pointer-events:none;
+  }
+
+  /* ---------- Pedalboard dock (mounted via pedalboard-ui.js) ---------- */
+  .dock{
+    position:fixed;top:16px;right:16px;bottom:16px;width:280px;
+    background:rgba(33,28,23,0.9);border:1px solid #3a3225;border-radius:14px;
+    padding:14px;overflow-y:auto;backdrop-filter:blur(4px);
+    font-family:'Inter',sans-serif;color:var(--text);font-size:12px;
+  }
+  .dock-toggle{
+    background:var(--pedal-top);border:1px solid var(--brass-dim);color:var(--text);
+    font-family:'Oswald',sans-serif;letter-spacing:0.04em;text-transform:uppercase;
+    font-size:11px;padding:6px 10px;border-radius:6px;cursor:pointer;width:100%;margin-bottom:10px;
+  }
+  .dock-toggle:hover{border-color:var(--brass);}
+  .dock.collapsed{bottom:auto;width:auto;padding:10px 14px;overflow:visible;}
+  .dock.collapsed .dock-body{display:none;}
+
+  .action-btn{
+    background:var(--pedal-top);border:1px solid var(--brass-dim);color:var(--text);
+    font-family:'Oswald',sans-serif;letter-spacing:0.04em;text-transform:uppercase;
+    font-size:11px;padding:7px 12px;border-radius:6px;cursor:pointer;
+  }
+  .action-btn:hover{border-color:var(--brass);}
+  .action-btn.primary{background:var(--brass-dim);}
+  .action-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .status{font-size:11px;color:var(--text-dim);}
+  .transport-mini{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-bottom:14px;}
+
+  .board{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
+  .pedal{background:var(--pedal);border-radius:10px;border:1px solid #443a2c;padding:12px 10px 14px;text-align:center;}
+  .pedal h3{font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;margin:0 0 10px;color:var(--text);}
+  .knob-row{display:flex;justify-content:center;gap:14px;margin-bottom:10px;}
+  .knob-unit{display:flex;flex-direction:column;align-items:center;gap:5px;}
+  .knob{
+    width:42px;height:42px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #4a4032, #211c16 70%);
+    border:1px solid #55492f;position:relative;cursor:ns-resize;touch-action:none;
+  }
+  .knob .indicator{
+    position:absolute;top:3px;left:50%;width:2px;height:16px;background:var(--brass);
+    transform-origin:50% 18px;transform:translateX(-50%) rotate(0deg);border-radius:2px;
+  }
+  .knob-label{font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;}
+  .footswitch{
+    width:36px;height:36px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#3a322a,#181410 75%);
+    border:2px solid #55492f;margin:0 auto 6px;cursor:pointer;position:relative;
+  }
+  .footswitch::after{
+    content:'';position:absolute;top:5px;left:50%;transform:translateX(-50%);
+    width:7px;height:7px;border-radius:50%;background:var(--led-off);
+  }
+  .pedal.on .footswitch::after{background:var(--led-green);box-shadow:0 0 6px var(--led-green);}
+  .pedal-state{font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;}
+  .pedal.on .pedal-state{color:var(--led-green);}
+
+  .demo-panel h2{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;color:var(--brass);margin:0 0 6px;}
+  .demo-hint{font-size:11px;color:var(--text-dim);margin:0 0 10px;}
+  .demo-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .demo-buttons button.action-btn.playing{background:var(--led-green);border-color:var(--led-green);color:#0a0806;}
+  .keyboard{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:12px;}
+  .key{
+    width:26px;height:32px;background:var(--pedal-top);border:1px solid #4a3f31;
+    border-radius:5px;display:flex;align-items:flex-end;justify-content:center;
+    font-size:9px;color:var(--text-dim);padding-bottom:3px;user-select:none;
+  }
+  .key.active{background:var(--brass);color:#1a1611;border-color:var(--brass);}
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div class="hud">
+  <h1>声音宇宙 Audio Biosphere</h1>
+  <div class="keys">
+    弹奏 Play: <b>1 2 3 4 5 6 7 8 9 0 - = [ ] \</b><br>
+    移动 Move: <b>W A S D</b> + 鼠标拖拽看向 drag to look<br>
+    远近 Zoom: <b>滚轮 scroll</b> · 看向 Look: <b>方向键 arrows</b>
+  </div>
+  <a href="index.html">← 返回效果器台 Back to Pedalboard</a>
+</div>
+<div class="hint">每一个音符都会在空间中留下痕迹 · Every note leaves a mark in space</div>
+
+<div class="dock" id="dock">
+  <button class="dock-toggle" id="dockToggle">隐藏效果器 Hide Pedalboard</button>
+  <div class="dock-body" id="dockBody"></div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { mountPedalboard } from './pedalboard-ui.js';
+
+// ---------- Scene ----------
+const canvas=document.getElementById('scene');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0806);
+scene.fog=new THREE.FogExp2(0x0a0806, 0.018);
+
+const camera=new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 500);
+camera.position.set(0, 1.5, 11);
+
+const renderer=new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+renderer.setSize(innerWidth, innerHeight);
+
+scene.add(new THREE.AmbientLight(0x2b241d, 0.9));
+const dirLight=new THREE.DirectionalLight(0xc98a3b, 0.6);
+dirLight.position.set(5, 10, 5);
+scene.add(dirLight);
+
+// Starfield
+{
+  const count=800;
+  const positions=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    const r=40+Math.random()*160;
+    const theta=Math.random()*Math.PI*2;
+    const phi=Math.acos(Math.random()*2-1);
+    positions[i*3]=r*Math.sin(phi)*Math.cos(theta);
+    positions[i*3+1]=r*Math.cos(phi);
+    positions[i*3+2]=r*Math.sin(phi)*Math.sin(theta);
+  }
+  const starGeo=new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  const starMat=new THREE.PointsMaterial({color:0xede6da, size:0.6, sizeAttenuation:true, transparent:true, opacity:0.55});
+  scene.add(new THREE.Points(starGeo, starMat));
+}
+
+const grid=new THREE.GridHelper(80, 40, 0x8a6431, 0x2b241d);
+grid.position.y=-4;
+scene.add(grid);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- Free-fly camera ----------
+let yaw=0, pitch=0;
+const PI_2=Math.PI/2;
+function updateCameraRotation(){
+  camera.rotation.set(pitch, yaw, 0, 'YXZ');
+}
+
+let dragging=false, lastX=0, lastY=0;
+canvas.addEventListener('pointerdown', e=>{
+  dragging=true; lastX=e.clientX; lastY=e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  yaw-=dx*0.0025;
+  pitch=Math.max(-PI_2+0.05, Math.min(PI_2-0.05, pitch-dy*0.0025));
+  updateCameraRotation();
+});
+['pointerup','pointercancel'].forEach(ev=>canvas.addEventListener(ev, ()=>dragging=false));
+
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  camera.position.addScaledVector(dir, -e.deltaY*0.02);
+}, {passive:false});
+
+// two-finger pinch to dolly (touch)
+let pinchDist=null;
+canvas.addEventListener('touchmove', e=>{
+  if(e.touches.length!==2) return;
+  e.preventDefault();
+  const [t1,t2]=e.touches;
+  const d=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY);
+  if(pinchDist!==null){
+    const dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+    camera.position.addScaledVector(dir, (d-pinchDist)*0.02);
+  }
+  pinchDist=d;
+}, {passive:false});
+canvas.addEventListener('touchend', ()=>{ pinchDist=null; });
+
+const moveState={forward:false, back:false, left:false, right:false};
+function getMoveVectors(){
+  const forward=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); forward.y=0; forward.normalize();
+  const right=new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion); right.y=0; right.normalize();
+  return {forward, right};
+}
+const MOVE_SPEED=6;
+function updateMovement(dt){
+  const {forward, right}=getMoveVectors();
+  const vec=new THREE.Vector3();
+  if(moveState.forward) vec.add(forward);
+  if(moveState.back) vec.sub(forward);
+  if(moveState.right) vec.add(right);
+  if(moveState.left) vec.sub(right);
+  if(vec.lengthSq()>0){ vec.normalize(); camera.position.addScaledVector(vec, MOVE_SPEED*dt); }
+}
+
+// ---------- Notes: keyboard -> pedal-engine synth + 3D object ----------
+const BIOSPHERE_KEYS=[
+  {key:'1',freq:261.63},{key:'2',freq:277.18},{key:'3',freq:293.66},{key:'4',freq:311.13},{key:'5',freq:329.63},
+  {key:'6',freq:349.23},{key:'7',freq:369.99},{key:'8',freq:392.00},{key:'9',freq:415.30},{key:'0',freq:440.00},
+  {key:'-',freq:466.16},{key:'=',freq:493.88},{key:'[',freq:523.25},{key:']',freq:554.37},{key:'\\',freq:587.33}
+];
+const KEY_ORDER=BIOSPHERE_KEYS.map(k=>k.key);
+
+const noteObjects=[];
+const pathPoints=[];
+const MAX_PATH=80;
+const pathGeometry=new THREE.BufferGeometry();
+{
+  const positions=new Float32Array(MAX_PATH*3);
+  pathGeometry.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  pathGeometry.setDrawRange(0,0);
+}
+const pathLine=new THREE.Line(pathGeometry, new THREE.LineBasicMaterial({color:0xc98a3b, transparent:true, opacity:0.45}));
+scene.add(pathLine);
+
+function pushPathPoint(pos){
+  pathPoints.push(pos.clone());
+  if(pathPoints.length>MAX_PATH) pathPoints.shift();
+  const posAttr=pathGeometry.attributes.position;
+  for(let i=0;i<pathPoints.length;i++) posAttr.setXYZ(i, pathPoints[i].x, pathPoints[i].y, pathPoints[i].z);
+  posAttr.needsUpdate=true;
+  pathGeometry.setDrawRange(0, pathPoints.length);
+}
+
+function spawnNoteObject(key){
+  const idx=KEY_ORDER.indexOf(key);
+  const pitchClass=idx%12;
+  const octaveOffset=Math.floor(idx/12);
+  const angle=(pitchClass/12)*Math.PI*2;
+  const radius=4+octaveOffset*2.5;
+  const x=Math.cos(angle)*radius;
+  const z=-Math.sin(angle)*radius;
+  const y=(idx/(KEY_ORDER.length-1)-0.5)*6;
+  const size=0.55-(idx/(KEY_ORDER.length-1))*0.3;
+  const color=new THREE.Color().setHSL(pitchClass/12, 0.65, 0.55);
+
+  const mesh=new THREE.Mesh(
+    new THREE.IcosahedronGeometry(size, 0),
+    new THREE.MeshStandardMaterial({color, emissive:color, emissiveIntensity:1.1, metalness:0.3, roughness:0.4, transparent:true, opacity:1})
+  );
+  mesh.position.set(x, y, z);
+  mesh.scale.setScalar(0.001);
+  scene.add(mesh);
+  noteObjects.push({mesh, born:performance.now(), life:6000});
+  pushPathPoint(mesh.position);
+}
+
+function updateNoteObjects(now){
+  for(let i=noteObjects.length-1;i>=0;i--){
+    const n=noteObjects[i];
+    const age=now-n.born;
+    const growIn=Math.min(1, age/250);
+    if(age<n.life-1500){
+      n.mesh.scale.setScalar(growIn);
+    }else if(age<n.life){
+      const fadeT=(age-(n.life-1500))/1500;
+      n.mesh.material.opacity=1-fadeT;
+      n.mesh.scale.setScalar(growIn*(1-fadeT*0.3));
+    }else{
+      scene.remove(n.mesh);
+      n.mesh.geometry.dispose();
+      n.mesh.material.dispose();
+      noteObjects.splice(i,1);
+    }
+  }
+}
+
+// ---------- Pedalboard dock: mount the shared engine + UI ----------
+mountPedalboard(document.getElementById('dockBody'), {
+  keys: BIOSPHERE_KEYS,
+  onNoteOn: (key)=>spawnNoteObject(key)
+});
+
+const dock=document.getElementById('dock');
+document.getElementById('dockToggle').addEventListener('click', ()=>{
+  const collapsed=dock.classList.toggle('collapsed');
+  document.getElementById('dockToggle').textContent=collapsed?'显示效果器 Show Pedalboard':'隐藏效果器 Hide Pedalboard';
+});
+
+// ---------- Input: camera movement only (notes are handled by pedalboard-ui.js) ----------
+window.addEventListener('keydown', e=>{
+  switch(e.key.toLowerCase()){
+    case 'w': moveState.forward=true; break;
+    case 's': moveState.back=true; break;
+    case 'a': moveState.left=true; break;
+    case 'd': moveState.right=true; break;
+  }
+  switch(e.key){
+    case 'ArrowUp': pitch=Math.min(PI_2-0.05, pitch+0.05); updateCameraRotation(); break;
+    case 'ArrowDown': pitch=Math.max(-PI_2+0.05, pitch-0.05); updateCameraRotation(); break;
+    case 'ArrowLeft': yaw+=0.08; updateCameraRotation(); break;
+    case 'ArrowRight': yaw-=0.08; updateCameraRotation(); break;
+  }
+});
+window.addEventListener('keyup', e=>{
+  switch(e.key.toLowerCase()){
+    case 'w': moveState.forward=false; break;
+    case 's': moveState.back=false; break;
+    case 'a': moveState.left=false; break;
+    case 'd': moveState.right=false; break;
+  }
+});
+
+// ---------- Main loop ----------
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(0.1, clock.getDelta());
+  updateMovement(dt);
+  updateNoteObjects(performance.now());
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

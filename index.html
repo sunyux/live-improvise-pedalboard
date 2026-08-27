@@ -51,6 +51,29 @@
     margin-bottom:20px;
     border:1px solid #3a3225;
   }
+  .screen-wrap.floating{
+    position:fixed;
+    width:240px;
+    z-index:999;
+    margin-bottom:0;
+    box-shadow:0 12px 32px rgba(0,0,0,0.6);
+  }
+  .float-handle{
+    display:none;
+    align-items:center;
+    padding:4px 8px;
+    margin:-4px -4px 10px;
+    background:var(--pedal-top);
+    border:1px solid var(--brass-dim);
+    border-radius:6px;
+    cursor:move;
+    font-size:10px;
+    letter-spacing:0.04em;
+    color:var(--text-dim);
+    user-select:none;
+    touch-action:none;
+  }
+  .screen-wrap.floating .float-handle{display:flex;}
   .screen{
     position:relative;
     background:var(--screen);
@@ -259,7 +282,7 @@
 <body>
 
 <h1>Live Improvise Film Score</h1>
-<p class="subtitle">虚拟效果器台 · 默片同步 · 演出录制 · 练习日志</p>
+<p class="subtitle">虚拟效果器台 · 默片同步 · 演出录制 · 练习日志 · <a href="biosphere.html" style="color:var(--brass);">声音宇宙 Audio Biosphere →</a></p>
 
 <div class="guide">
   <h2>新手上路 · 四步</h2>
@@ -271,7 +294,10 @@
   </ol>
 </div>
 
-<div class="screen-wrap">
+<div class="screen-wrap" id="screenWrap">
+  <div class="float-handle" id="floatHandle">
+    <span>拖动移动 Drag to move</span>
+  </div>
   <div class="screen">
     <video id="video" playsinline muted loop></video>
     <div class="empty" id="emptyHint">上传一段默片/实验短片素材以同步演奏</div>
@@ -279,6 +305,7 @@
   <div class="screen-controls">
     <label class="file-btn">加载影片<input type="file" id="videoFile" accept="video/*"></label>
     <button class="action-btn" id="playBtn" disabled>播放 / 暂停</button>
+    <button class="action-btn" id="floatBtn">悬浮播放 Float</button>
     <span class="status" id="videoStatus">未加载素材</span>
   </div>
 </div>
@@ -400,6 +427,45 @@ playBtn.addEventListener('click', ()=>{
   if(video.paused){ video.play(); } else { video.pause(); }
 });
 
+// ---------- Floating video window ----------
+const screenWrap=document.getElementById('screenWrap');
+const floatHandle=document.getElementById('floatHandle');
+const floatBtn=document.getElementById('floatBtn');
+let isFloating=false;
+
+floatBtn.addEventListener('click', ()=>{
+  isFloating=!isFloating;
+  screenWrap.classList.toggle('floating', isFloating);
+  floatBtn.textContent=isFloating?'还原 Restore':'悬浮播放 Float';
+  if(isFloating){
+    const rect=screenWrap.getBoundingClientRect();
+    screenWrap.style.left=rect.left+'px';
+    screenWrap.style.top=rect.top+'px';
+  }else{
+    screenWrap.style.left='';
+    screenWrap.style.top='';
+  }
+});
+
+let draggingVideo=false, dragOffsetX=0, dragOffsetY=0;
+floatHandle.addEventListener('pointerdown', e=>{
+  draggingVideo=true;
+  const rect=screenWrap.getBoundingClientRect();
+  dragOffsetX=e.clientX-rect.left;
+  dragOffsetY=e.clientY-rect.top;
+  floatHandle.setPointerCapture(e.pointerId);
+});
+floatHandle.addEventListener('pointermove', e=>{
+  if(!draggingVideo) return;
+  const maxX=window.innerWidth-screenWrap.offsetWidth;
+  const maxY=window.innerHeight-screenWrap.offsetHeight;
+  const x=Math.max(0,Math.min(maxX,e.clientX-dragOffsetX));
+  const y=Math.max(0,Math.min(maxY,e.clientY-dragOffsetY));
+  screenWrap.style.left=x+'px';
+  screenWrap.style.top=y+'px';
+});
+['pointerup','pointercancel'].forEach(ev=>floatHandle.addEventListener(ev, ()=>draggingVideo=false));
+
 // ---------- Knob interaction ----------
 document.querySelectorAll('.knob').forEach(knob=>{
   let dragging=false, startY=0, startVal=0;
@@ -462,7 +528,7 @@ engineBtn.addEventListener('click', async ()=>{
 });
 
 function makeDistortionCurve(amount){
-  const k=amount*100, n=44100, curve=new Float32Array(n);
+  const k=amount*400, n=44100, curve=new Float32Array(n);
   for(let i=0;i<n;i++){
     const x=i*2/n-1;
     curve[i]=(3+k)*x*20*(Math.PI/180)/(Math.PI+k*Math.abs(x));
@@ -492,6 +558,8 @@ function buildGraph(){
   const driveShaper=audioCtx.createWaveShaper();
   driveShaper.curve=makeDistortionCurve(pedalState.drive.drive);
   driveShaper.oversample='4x';
+  const driveMakeup=audioCtx.createGain();
+  driveMakeup.gain.value=2.2; // the shaping curve attenuates level; compensate so drive reads as louder/grittier, not just quieter
   const driveDry=audioCtx.createGain(), driveWet=audioCtx.createGain();
   driveDry.gain.value=1; driveWet.gain.value=0;
 
@@ -506,6 +574,8 @@ function buildGraph(){
   // Reverb stage
   const convolver=audioCtx.createConvolver();
   convolver.buffer=makeImpulse(audioCtx, pedalState.reverb.decay*2+0.2);
+  const reverbMakeup=audioCtx.createGain();
+  reverbMakeup.gain.value=1.7; // noise-based IR tail is naturally quiet; compensate so the wet signal is clearly audible
   const reverbDry=audioCtx.createGain(), reverbWet=audioCtx.createGain();
   reverbDry.gain.value=1; reverbWet.gain.value=0;
 
@@ -513,7 +583,8 @@ function buildGraph(){
 
   // Wiring: input -> drive(dry/wet) -> delay(dry/wet) -> reverb(dry/wet) -> master -> destination + recDest
   inputGain.connect(driveDry); inputGain.connect(driveShaper);
-  driveShaper.connect(driveWet);
+  driveShaper.connect(driveMakeup);
+  driveMakeup.connect(driveWet);
   const afterDrive=audioCtx.createGain();
   driveDry.connect(afterDrive); driveWet.connect(afterDrive);
 
@@ -527,7 +598,8 @@ function buildGraph(){
 
   afterDelay.connect(reverbDry);
   afterDelay.connect(convolver);
-  convolver.connect(reverbWet);
+  convolver.connect(reverbMakeup);
+  reverbMakeup.connect(reverbWet);
   const afterReverb=audioCtx.createGain();
   reverbDry.connect(afterReverb); reverbWet.connect(afterReverb);
 
@@ -561,25 +633,38 @@ let waveformRunning=false;
 function startWaveformLoop(){
   if(waveformRunning) return;
   waveformRunning=true;
-  const bufferLength=nodes.analyser.fftSize;
+  const bufferLength=nodes.analyser.frequencyBinCount;
   const dataArray=new Uint8Array(bufferLength);
+
+  // Log-spaced frequency bars (like a classic spectrum analyzer) instead of
+  // a linear bin-per-pixel bar chart, since perceived pitch/frequency content
+  // is logarithmic — otherwise the bass bins dominate and the rest sits empty.
+  const NUM_BARS=48;
+  const minFreq=30, maxFreq=audioCtx.sampleRate/2;
+  const nyquist=audioCtx.sampleRate/2;
+  const barBinRanges=[];
+  for(let i=0;i<NUM_BARS;i++){
+    const freqLo=minFreq*Math.pow(maxFreq/minFreq,i/NUM_BARS);
+    const freqHi=minFreq*Math.pow(maxFreq/minFreq,(i+1)/NUM_BARS);
+    const binLo=Math.min(bufferLength-1,Math.round(freqLo/nyquist*bufferLength));
+    const binHi=Math.max(binLo+1,Math.round(freqHi/nyquist*bufferLength));
+    barBinRanges.push([binLo,binHi]);
+  }
+
   function draw(){
     requestAnimationFrame(draw);
-    nodes.analyser.getByteTimeDomainData(dataArray);
+    nodes.analyser.getByteFrequencyData(dataArray);
     const w=scopeCanvas.width, h=scopeCanvas.height;
     scopeCtx.clearRect(0,0,w,h);
-    scopeCtx.lineWidth=2*window.devicePixelRatio;
-    scopeCtx.strokeStyle='#c98a3b';
-    scopeCtx.beginPath();
-    const slice=w/bufferLength;
-    let x=0;
-    for(let i=0;i<bufferLength;i++){
-      const v=dataArray[i]/128.0;
-      const y=v*h/2;
-      if(i===0) scopeCtx.moveTo(x,y); else scopeCtx.lineTo(x,y);
-      x+=slice;
+    scopeCtx.fillStyle='#c98a3b';
+    const barWidth=w/NUM_BARS, gap=barWidth*0.15;
+    for(let i=0;i<NUM_BARS;i++){
+      const [binLo,binHi]=barBinRanges[i];
+      let peak=0;
+      for(let b=binLo;b<binHi;b++) peak=Math.max(peak,dataArray[b]);
+      const barHeight=(peak/255)*h;
+      scopeCtx.fillRect(i*barWidth+gap/2, h-barHeight, barWidth-gap, barHeight);
     }
-    scopeCtx.stroke();
   }
   draw();
 }
@@ -588,8 +673,8 @@ function applyBypass(){
   const t=audioCtx.currentTime, ramp=0.03;
   nodes.driveDry.gain.linearRampToValueAtTime(pedalState.drive.on?0:1, t+ramp);
   nodes.driveWet.gain.linearRampToValueAtTime(pedalState.drive.on?1:0, t+ramp);
-  nodes.delayDry.gain.linearRampToValueAtTime(pedalState.delay.on?0.6:1, t+ramp);
-  nodes.delayWet.gain.linearRampToValueAtTime(pedalState.delay.on?0.6:0, t+ramp);
+  nodes.delayDry.gain.linearRampToValueAtTime(pedalState.delay.on?0.5:1, t+ramp);
+  nodes.delayWet.gain.linearRampToValueAtTime(pedalState.delay.on?0.85:0, t+ramp);
   nodes.reverbDry.gain.linearRampToValueAtTime(pedalState.reverb.on?(1-pedalState.reverb.mix):1, t+ramp);
   nodes.reverbWet.gain.linearRampToValueAtTime(pedalState.reverb.on?pedalState.reverb.mix:0, t+ramp);
 }
