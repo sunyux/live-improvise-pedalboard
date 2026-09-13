@@ -58,9 +58,10 @@ function buildMarkup(keys){
         <button class="action-btn" data-demo="noise" disabled>噪音脉冲 Noise</button>
         <button class="action-btn" data-demo="alert" disabled>提示音 Notice</button>
         <button class="action-btn" data-demo="drone" disabled>持续音垫 Drone</button>
+        <button class="action-btn" data-demo="water" disabled>流水声 Water</button>
         <button class="action-btn" data-demo="guitar" disabled>吉他扫弦 Guitar Strum</button>
       </div>
-      <p class="demo-hint">电脑键盘演奏(像弹钢琴一样,按住不放会持续发声):</p>
+      <p class="demo-hint">电脑键盘演奏(像弹钢琴一样,按住不放会持续发声,可切换不同乐器音色,像多种乐器一起演奏):</p>
       <div class="keyboard" data-role="keyboard">${keyDivs}</div>
       <div style="margin-top:12px;">
         <button class="action-btn" data-role="timbre-btn">键盘音色: 合成 Synth</button>
@@ -76,7 +77,17 @@ export function mountPedalboard(root, options={}){
 
   root.innerHTML=buildMarkup(keys);
 
-  let engine=null, audioCtx=null, keyboardTimbre='synth';
+  // Mirrors the `timbres` registry in pedal-engine.js (labels only — the
+  // actual synthesis lives entirely in the engine, not duplicated here).
+  const TIMBRES=[
+    {key:'synth',label:'合成 Synth'},
+    {key:'marimba',label:'马林巴 Marimba'},
+    {key:'horn',label:'圆号 Horn'},
+    {key:'flute',label:'长笛 Flute'},
+    {key:'harp',label:'竖琴 Harp'},
+    {key:'guitar',label:'吉他 Guitar'}
+  ];
+  let engine=null, audioCtx=null, timbreIndex=0;
   const activeNotes={};
 
   const engineBtn=root.querySelector('[data-role=engine-btn]');
@@ -139,6 +150,7 @@ export function mountPedalboard(root, options={}){
       if(demo==='ufo') flash(btn, engine.playUFO());
       else if(demo==='noise') flash(btn, engine.playNoiseBurst());
       else if(demo==='alert') flash(btn, engine.playAlert());
+      else if(demo==='water') flash(btn, engine.playWater());
       else if(demo==='guitar') flash(btn, engine.playGuitarDemo());
       else if(demo==='drone'){
         const active=engine.toggleDrone();
@@ -149,31 +161,34 @@ export function mountPedalboard(root, options={}){
   });
 
   timbreBtn.addEventListener('click', ()=>{
-    keyboardTimbre=keyboardTimbre==='synth' ? 'guitar' : 'synth';
-    timbreBtn.textContent='键盘音色: '+(keyboardTimbre==='synth' ? '合成 Synth' : '吉他 Guitar');
+    timbreIndex=(timbreIndex+1)%TIMBRES.length;
+    timbreBtn.textContent='键盘音色: '+TIMBRES[timbreIndex].label;
   });
 
   function noteOn(key){
     if(!engine) return;
     const entry=keys.find(k=>k.key===key);
     if(!entry) return;
+    const timbre=engine.timbres[TIMBRES[timbreIndex].key];
     const keyEl=keyboardEl.querySelector(`[data-key="${key}"]`);
-    if(keyboardTimbre==='guitar'){
-      engine.playGuitarPluck(entry.freq, 0.5);
+    if(timbre.mode==='oneshot'){
+      timbre.play(entry.freq, 0.5);
       if(keyEl){ keyEl.classList.add('active'); setTimeout(()=>keyEl.classList.remove('active'),400); }
       onNoteOn(key, entry.freq);
       return;
     }
     if(activeNotes[key]) return;
-    activeNotes[key]=engine.noteOn(entry.freq);
+    // remember which timbre started this note, so a mid-hold timbre switch
+    // can't strand the voice (noteOff must stop it with the same synth fn)
+    activeNotes[key]={voice:timbre.noteOn(entry.freq), timbreKey:TIMBRES[timbreIndex].key};
     if(keyEl) keyEl.classList.add('active');
     onNoteOn(key, entry.freq);
   }
   function noteOff(key){
-    if(!engine || keyboardTimbre==='guitar') return;
-    const voice=activeNotes[key];
-    if(!voice) return;
-    engine.noteOff(voice);
+    if(!engine) return;
+    const held=activeNotes[key];
+    if(!held) return;
+    engine.timbres[held.timbreKey].noteOff(held.voice);
     delete activeNotes[key];
     const keyEl=keyboardEl.querySelector(`[data-key="${key}"]`);
     if(keyEl) keyEl.classList.remove('active');

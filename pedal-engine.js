@@ -104,7 +104,10 @@ export function createPedalEngine(audioCtx){
 
   let droneVoice=null;
 
-  function playGuitarPluck(freq, gain){
+  // Karplus-Strong plucked string. dampingFreq/feedbackAmt shape the timbre:
+  // a darker/shorter lowpass+feedback pair sounds like nylon guitar, a
+  // brighter/longer one rings out like a harp string.
+  function pluckString(freq, gain, dampingFreq, feedbackAmt){
     const now=audioCtx.currentTime;
     const sampleRate=audioCtx.sampleRate;
     const period=1/freq;
@@ -114,13 +117,105 @@ export function createPedalEngine(audioCtx){
     for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
     const noise=audioCtx.createBufferSource(); noise.buffer=buffer;
     const delay=audioCtx.createDelay(1); delay.delayTime.value=period;
-    const damping=audioCtx.createBiquadFilter(); damping.type='lowpass'; damping.frequency.value=4500;
-    const feedback=audioCtx.createGain(); feedback.gain.value=0.98;
+    const damping=audioCtx.createBiquadFilter(); damping.type='lowpass'; damping.frequency.value=dampingFreq;
+    const feedback=audioCtx.createGain(); feedback.gain.value=feedbackAmt;
     const outGain=audioCtx.createGain(); outGain.gain.value=gain!==undefined?gain:0.5;
     noise.connect(delay); delay.connect(damping); damping.connect(feedback); feedback.connect(delay);
     damping.connect(outGain); outGain.connect(inputGain);
     noise.start(now); noise.stop(now+period);
-    setTimeout(()=>{ try{ delay.disconnect(); damping.disconnect(); feedback.disconnect(); outGain.disconnect(); }catch(e){} }, 3500);
+    setTimeout(()=>{ try{ delay.disconnect(); damping.disconnect(); feedback.disconnect(); outGain.disconnect(); }catch(e){} }, 4500);
+  }
+  function playGuitarPluck(freq, gain){ pluckString(freq, gain, 4500, 0.98); }
+  function playHarpPluck(freq, gain){ pluckString(freq, gain, 8500, 0.996); } // brighter, longer ring than guitar
+
+  function playMarimbaNote(freq, gain){
+    const now=audioCtx.currentTime;
+    const g=gain!==undefined?gain:0.5;
+    const osc=audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=freq;
+    const click=audioCtx.createOscillator(); click.type='sine'; click.frequency.value=freq*4; // bright mallet attack
+    const env=audioCtx.createGain(); env.gain.value=0;
+    const clickEnv=audioCtx.createGain(); clickEnv.gain.value=0;
+    osc.connect(env); env.connect(inputGain);
+    click.connect(clickEnv); clickEnv.connect(inputGain);
+    env.gain.setValueAtTime(0.0001, now);
+    env.gain.linearRampToValueAtTime(g, now+0.006);
+    env.gain.exponentialRampToValueAtTime(0.001, now+0.9);
+    clickEnv.gain.setValueAtTime(0.0001, now);
+    clickEnv.gain.linearRampToValueAtTime(g*0.3, now+0.003);
+    clickEnv.gain.exponentialRampToValueAtTime(0.001, now+0.1);
+    osc.start(now); click.start(now);
+    osc.stop(now+0.95); click.stop(now+0.12);
+  }
+
+  function noteOnHorn(freq){
+    const now=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator(); osc.type='sawtooth'; osc.frequency.value=freq;
+    const filter=audioCtx.createBiquadFilter(); filter.type='lowpass'; filter.frequency.value=1400; filter.Q.value=1;
+    const vibrato=audioCtx.createOscillator(); vibrato.type='sine'; vibrato.frequency.value=5;
+    const vibratoGain=audioCtx.createGain(); vibratoGain.gain.value=3;
+    vibrato.connect(vibratoGain); vibratoGain.connect(osc.frequency);
+    const env=audioCtx.createGain(); env.gain.value=0;
+    osc.connect(filter); filter.connect(env); env.connect(inputGain);
+    env.gain.linearRampToValueAtTime(0.26, now+0.15); // slow brassy swell
+    osc.start(now); vibrato.start(now);
+    return {osc, vibrato, env};
+  }
+  function noteOffHorn(v){
+    const now=audioCtx.currentTime;
+    v.env.gain.linearRampToValueAtTime(0, now+0.2);
+    v.osc.stop(now+0.25); v.vibrato.stop(now+0.25);
+  }
+
+  function noteOnFlute(freq){
+    const now=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=freq;
+    const vibrato=audioCtx.createOscillator(); vibrato.type='sine'; vibrato.frequency.value=5.5;
+    const vibratoGain=audioCtx.createGain(); vibratoGain.gain.value=2.5;
+    vibrato.connect(vibratoGain); vibratoGain.connect(osc.frequency);
+    const noiseBuf=audioCtx.createBuffer(1, audioCtx.sampleRate*0.5, audioCtx.sampleRate);
+    const nd=noiseBuf.getChannelData(0);
+    for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+    const noise=audioCtx.createBufferSource(); noise.buffer=noiseBuf; noise.loop=true;
+    const noiseFilter=audioCtx.createBiquadFilter(); noiseFilter.type='bandpass'; noiseFilter.frequency.value=freq*2; noiseFilter.Q.value=2;
+    const noiseGain=audioCtx.createGain(); noiseGain.gain.value=0.02;
+    noise.connect(noiseFilter); noiseFilter.connect(noiseGain);
+    const env=audioCtx.createGain(); env.gain.value=0;
+    osc.connect(env); noiseGain.connect(env); env.connect(inputGain);
+    env.gain.linearRampToValueAtTime(0.24, now+0.08);
+    osc.start(now); vibrato.start(now); noise.start(now);
+    return {osc, vibrato, noise, env};
+  }
+  function noteOffFlute(v){
+    const now=audioCtx.currentTime;
+    v.env.gain.linearRampToValueAtTime(0, now+0.1);
+    v.osc.stop(now+0.15); v.vibrato.stop(now+0.15); v.noise.stop(now+0.15);
+  }
+
+  function playWater(){
+    const now=audioCtx.currentTime, dur=4.5;
+    const bufferSize=Math.floor(audioCtx.sampleRate*dur);
+    const buffer=audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data=buffer.getChannelData(0);
+    for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
+    const noise=audioCtx.createBufferSource(); noise.buffer=buffer;
+
+    const filter=audioCtx.createBiquadFilter(); filter.type='bandpass'; filter.frequency.value=1800; filter.Q.value=0.8;
+    const lfoSlow=audioCtx.createOscillator(); lfoSlow.type='sine'; lfoSlow.frequency.value=0.6;
+    const lfoSlowGain=audioCtx.createGain(); lfoSlowGain.gain.value=900;
+    lfoSlow.connect(lfoSlowGain); lfoSlowGain.connect(filter.frequency);
+    const lfoFast=audioCtx.createOscillator(); lfoFast.type='sine'; lfoFast.frequency.value=2.3;
+    const lfoFastGain=audioCtx.createGain(); lfoFastGain.gain.value=350;
+    lfoFast.connect(lfoFastGain); lfoFastGain.connect(filter.frequency);
+
+    const env=audioCtx.createGain(); env.gain.value=0;
+    noise.connect(filter); filter.connect(env); env.connect(inputGain);
+    env.gain.linearRampToValueAtTime(0.3, now+0.6);
+    env.gain.setValueAtTime(0.3, now+dur-0.8);
+    env.gain.linearRampToValueAtTime(0, now+dur);
+
+    noise.start(now); lfoSlow.start(now); lfoFast.start(now);
+    noise.stop(now+dur); lfoSlow.stop(now+dur); lfoFast.stop(now+dur);
+    return dur*1000;
   }
 
   function playGuitarDemo(){
@@ -214,11 +309,24 @@ export function createPedalEngine(audioCtx){
     voice.osc.stop(now+0.1);
   }
 
+  // Keyboard timbres, keyed by name: 'sustain' timbres hold a voice while the
+  // key is down (noteOn returns it, noteOff stops it); 'oneshot' timbres are
+  // struck/plucked and just fire-and-forget on key-down (play(freq)).
+  const timbres={
+    synth:{ mode:'sustain', label:'合成 Synth', noteOn, noteOff },
+    marimba:{ mode:'oneshot', label:'马林巴 Marimba', play:playMarimbaNote },
+    horn:{ mode:'sustain', label:'圆号 Horn', noteOn:noteOnHorn, noteOff:noteOffHorn },
+    flute:{ mode:'sustain', label:'长笛 Flute', noteOn:noteOnFlute, noteOff:noteOffFlute },
+    harp:{ mode:'oneshot', label:'竖琴 Harp', play:playHarpPluck },
+    guitar:{ mode:'oneshot', label:'吉他 Guitar', play:playGuitarPluck }
+  };
+
   return {
-    audioCtx, inputGain, masterGain, analyser, pedalState,
+    audioCtx, inputGain, masterGain, analyser, pedalState, timbres,
     setParam(pedal, param, value){ pedalState[pedal][param]=value; applyParams(); },
     setBypass(pedal, on){ pedalState[pedal].on=on; applyBypass(); },
-    playGuitarPluck, playGuitarDemo, playUFO, playNoiseBurst, playAlert, toggleDrone,
+    playGuitarPluck, playHarpPluck, playMarimbaNote, playGuitarDemo,
+    playUFO, playNoiseBurst, playAlert, playWater, toggleDrone,
     noteOn, noteOff,
     get droneActive(){ return !!droneVoice; }
   };
